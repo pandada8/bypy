@@ -55,6 +55,7 @@ if sys.version_info[0] == 2:
 	import urllib as ulp
 	import cPickle as pickle
 	pickleload = pickle.load
+	from xmlrpclib import ServerProxy, ProtocolError
 elif sys.version_info[0] == 3:
 	import urllib.parse as ulp
 	import pickle
@@ -62,7 +63,10 @@ elif sys.version_info[0] == 3:
 	basestring = str
 	long = int
 	raw_input = input
+	from xmlrpc.client import ServerProxy, ProtocolError
 	pickleload = partial(pickle.load, encoding="bytes")
+
+aria2 = ServerProxy("http://localhost:6800/rpc").aria2
 
 from . import const
 from . import gvar
@@ -778,8 +782,8 @@ Possible causes:
 Possible fixes:
  1. Remove the authorization token by running with the parameter '{}', and then re-run this program.
  2. If (1) still doesn't solve the problem, you may have to go to:
-    https://passport.baidu.com/accountbind
-    and remove the authorization of this program, and then re-run this program.""".format(const.CleanOptionShort))
+	https://passport.baidu.com/accountbind
+	and remove the authorization of this program, and then re-run this program.""".format(const.CleanOptionShort))
 		return const.EInvalidJson
 
 	def __store_json(self, r):
@@ -1099,7 +1103,7 @@ Possible fixes:
 		fmt = '$t $f $s $m $d',
 		sort = 'name', order = 'asc'):
 		''' Usage: list/ls [remotepath] [format] [sort] [order] - list the 'remotepath' directory at Baidu PCS
-    remotepath - the remote path at Baidu PCS. default: root directory '/'
+	remotepath - the remote path at Baidu PCS. default: root directory '/'
 	format - specifies how the list are displayed
 	  $t - Type: Directory ('D') or File ('F')
 	  $f - File name
@@ -1110,8 +1114,8 @@ Possible fixes:
 	  $$ - The '$' sign
 	  So '$t - $f - $s - $$' will display "Type - File - Size - $'
 	  Default format: '$t $f $s $m $d'
-    sort - sorting by [name, time, size]. default: 'name'
-    order - sorting order [asc, desc]. default: 'asc'
+	sort - sorting by [name, time, size]. default: 'name'
+	order - sorting order [asc, desc]. default: 'asc'
 		'''
 		rpath = get_pcs_path(remotepath)
 
@@ -1139,7 +1143,7 @@ Possible fixes:
 get information of the given path (dir / file) at Baidu Yun.
   remotepath - the remote path
   format - specifies how the list are displayed
-    it supports all the format variables in the 'list' command, and additionally the followings:
+	it supports all the format variables in the 'list' command, and additionally the followings:
 	$i - fs_id
 	$b - MD5 block_list
 	$u - Has sub directory or not
@@ -1500,9 +1504,9 @@ get information of the given path (dir / file) at Baidu Yun.
 	def upload(self, localpath = '', remotepath = '', ondup = "overwrite"):
 		''' Usage: upload [localpath] [remotepath] [ondup] - \
 upload a file or directory (recursively)
-    localpath - local path, is the current directory '.' if not specified
-    remotepath - remote path at Baidu Yun (after app root directory at Baidu Yun)
-    ondup - what to do upon duplication ('overwrite' or 'newcopy'), default: 'overwrite'
+	localpath - local path, is the current directory '.' if not specified
+	remotepath - remote path at Baidu Yun (after app root directory at Baidu Yun)
+	ondup - what to do upon duplication ('overwrite' or 'newcopy'), default: 'overwrite'
 		'''
 		# copying since Python is call-by-reference by default,
 		# so we shall not modify the passed-in parameters
@@ -1547,8 +1551,8 @@ try to create a file at PCS by combining slices, having MD5s specified
   remotefile - remote file at Baidu Yun (after app root directory at Baidu Yun)
   localfile - local file to verify against, passing in a star '*' or '/dev/null' means no verification
   md5s - MD5 digests of the slices, can be:
-    - list of MD5 hex strings separated by spaces
-    - a string in the form of 'l<path>' where <path> points to a text file containing MD5 hex strings separated by spaces or line-by-line
+	- list of MD5 hex strings separated by spaces
+	- a string in the form of 'l<path>' where <path> points to a text file containing MD5 hex strings separated by spaces or line-by-line
 		'''
 		self.__slice_md5s = []
 		if args:
@@ -1674,13 +1678,16 @@ try to create a file at PCS by combining slices, having MD5s specified
 
 		full_url = "{}?{}".format(url, ulp.urlencode(pars))
 
-		cmd = "aria2c --user-agent='{}' {} -o '{}' '{}'".format(const.UserAgent, self.__downloader_args, localfile, full_url)
-		self.pd("call: {}".format(cmd))
-		ret = subprocess.call(cmd, shell = True)
-		self.pd("aria2c exited with status: {}".format(ret))
-		# TODO: a finer map return codes to our internal errors
-		if ret != const.ENoError:
-			ret == const.ERequestFailed
+		print("{}".format(localfile))
+		try:
+			aria2.addUri([full_url], {"out": localfile.encode("utf8"), "user-agent": "netdisk;Chrome Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/49.0.2623.87 Safari/537.36"})
+			while int(aria2.getGlobalStat()['numWaiting']) >= 5:
+				time.sleep(1)
+		except ProtocolError as e:
+			print(e, e.headers)
+			return const.ERequestFailed
+		return const.ENoError
+
 		return ret
 
 	# requirment: self.__remote_json is already gotten
@@ -1818,10 +1825,10 @@ try to create a file at PCS by combining slices, having MD5s specified
 download a remote file.
   remotefile - remote file at Baidu Yun (after app root directory at Baidu Yun)
   localpath - local path.
-    if it ends with '/' or '\\', it specifies the local directory
-    if it specifies an existing directory, it is the local directory
-    if not specified, the local directory is the current directory '.'
-    otherwise, it specifies the local file name
+	if it ends with '/' or '\\', it specifies the local directory
+	if it specifies an existing directory, it is the local directory
+	if not specified, the local directory is the current directory '.'
+	otherwise, it specifies the local file name
 To stream a file using downfile, you can use the 'mkfifo' trick with omxplayer etc.:
   mkfifo /tmp/omx
   bypy.py downfile <remotepath> /tmp/omx &
